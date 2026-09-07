@@ -2,6 +2,57 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseComputo } from '../src/parser.js';
 
+function transportEntry(unit, amounts = ["1’184,00", '5,63', "6’665,92"]) {
+  const item = (text, x, width = 24) => ({ text, x, width, height: 10 });
+  return {
+    page: 8, width: 793, height: 1122,
+    rows: [
+      { y: 950, items: [item('44', 23), item('Trasporto di materiale proveniente da lavori di movimento terra', 84, 295)] },
+      { y: 936, items: [item('CAM24_T01', 23, 57)] },
+      { y: 923, items: [item('.010.010.B', 23, 50)] },
+      { y: 870, items: [item('Vedi voce n° 43 [mc 592.00]', 84, 140), item('2,00', 409), item("1’184,00", 592, 40)] },
+      { y: 845, items: [item(`SOMMANO ${unit}`, 286, 96), ...amounts.map((value, index) => item(value, [592, 664, 727][index], index === 1 ? 24 : 40))] },
+    ],
+  };
+}
+
+for (const unit of ['mc/ 5km', 'mc/5km', 'mc / 5 km', 'mc/10km']) {
+  test(`accepts transport summaries measured in ${unit}`, () => {
+    const result = parseComputo([transportEntry(unit)]);
+    assert.equal(result.voci.length, 1);
+    const entry = result.voci[0];
+    assert.equal(entry.numero, 44);
+    assert.equal(entry.tariffa, 'CAM24_T01 .010.010.B');
+    assert.equal(entry.unitaMisura, unit);
+    assert.equal(entry.quantita, 1184);
+    assert.equal(entry.prezzoUnitario, 5.63);
+    assert.equal(entry.importo, 6665.92);
+    assert.equal(entry.scostamento, 0);
+    assert.equal(entry.controllo, 'OK');
+    assert.equal(result.totaleEstratto, 6665.92);
+    assert.deepEqual(result.warnings, []);
+  });
+}
+
+test('does not use the distance or measurement row to complete missing summary amounts', () => {
+  const result = parseComputo([transportEntry('mc/ 5km', ['5,63', "6’665,92"])]);
+  assert.equal(result.voci[0].quantita, null);
+  assert.equal(result.voci[0].controllo, 'INCOMPLETO');
+  assert.equal(result.warnings.length, 1);
+});
+
+test('parses mc/ 5km in text-only summaries', () => {
+  const result = parseComputo([{
+    page: 8,
+    lines: ['44 Trasporto di materiale', "SOMMANO mc/ 5km 1’184,00 5,63 6’665,92"],
+  }]);
+  assert.equal(result.voci[0].unitaMisura, 'mc/ 5km');
+  assert.equal(result.voci[0].quantita, 1184);
+  assert.equal(result.voci[0].prezzoUnitario, 5.63);
+  assert.equal(result.voci[0].importo, 6665.92);
+  assert.equal(result.voci[0].controllo, 'OK');
+});
+
 function safetyEntry(summaryItems) {
   const item = (text, x, width = 20) => ({ text, x, width, height: 10 });
   return {

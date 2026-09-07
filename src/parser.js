@@ -1,7 +1,7 @@
 import { segmentRow, repairIdentifierDescription, cleanText, vectorBoundariesNear } from './table-engine.js';
 const DATE_RE = /\b(\d{2}\/\d{2}\/\d{4})\b/;
 const NUM_RE = /-?\d[\d.'´’]*,\d+|-?\d[\d.'´’]*/g;
-const UM_RE = /^(coppie|cad|cad\/(?:[1-9]\d*)?gg|cadauno|cad\.|mq|mq\/cm|m2|m²|mc|m3|m³|kg|t|q|h|ora|gg|ml|m|cm|mm|ha|a corpo|corpo|%|l|lt|kW|W|V|A|nr|n\.|pz)$/i;
+const UM_RE = /^(coppie|cad|cad\/(?:[1-9]\d*)?gg|cadauno|cad\.|mq|mq\/cm|m2|m²|mc|mc\s*\/\s*(?:[1-9]\d*\s*)?km|m3|m³|kg|t|q|h|ora|gg|ml|m|cm|mm|ha|a corpo|corpo|%|l|lt|kW|W|V|A|nr|n\.|pz)$/i;
 
 function n(s) {
   if (s == null || s === '') return null;
