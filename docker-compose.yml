@@ -1,0 +1,19 @@
+services:
+  computo-extractor:
+    build:
+      context: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      MAX_UPLOAD_MB: 50
+      JSON_BODY_LIMIT_MB: 30
+      APP_VERSION: ${APP_VERSION:-2.6.0}
+    expose:
+      - "3000"
+    networks:
+      - ssl-reverse-proxy
+
+networks:
+  ssl-reverse-proxy:
+    external: true
