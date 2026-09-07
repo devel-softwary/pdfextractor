@@ -77,10 +77,10 @@ function parseNumCell(s) {
   const m = clean(s).match(/-?\d[\d.'´’]*,\d+|-?\d[\d.'´’]*/);
   return m ? n(m[0]) : null;
 }
-function parseSommanoCells(r) {
+function parseSommanoCells(r, fallbackUnit = '') {
   // Some PriMus layouts put the unit inside the designation column and omit
   // the dedicated unit column. Only flatten the summary, never entry rows.
-  const summary = parseSommanoText(r.all);
+  const summary = parseSommanoText(r.all, fallbackUnit);
   if (summary && UM_RE.test(summary.unitaMisura)) return summary;
   if (!/^SOMMANO/i.test(r.desc)) return null;
   let um = clean(r.unit);
@@ -92,12 +92,19 @@ function parseSommanoCells(r) {
   if (!UM_RE.test(um) || q == null || pu == null || tot == null) return null;
   return { unitaMisura: um, quantita:q, prezzoUnitario:pu, importo:tot };
 }
-function parseSommanoText(text) {
+function parseSommanoText(text, fallbackUnit = '') {
   const match = clean(text).match(
-    /^SOMMANO[.\s]+(.+?)\s+(-?\d[\d.'´’]*,\d+|-?\d[\d.'´’]*)\s+(-?\d[\d.'´’]*,\d+|-?\d[\d.'´’]*)\s+(-?\d[\d.'´’]*,\d+|-?\d[\d.'´’]*)$/i,
+    /^SOMMANO[.\s]+(?:(.+?)\s+)?(-?\d[\d.'´’]*,\d+|-?\d[\d.'´’]*)\s+(-?\d[\d.'´’]*,\d+|-?\d[\d.'´’]*)\s+(-?\d[\d.'´’]*,\d+|-?\d[\d.'´’]*)$/i,
   );
   if (!match) return null;
-  return { unitaMisura:clean(match[1]), quantita:n(match[2]), prezzoUnitario:n(match[3]), importo:n(match[4]) };
+  const unit = clean(match[1] || fallbackUnit);
+  if (!unit) return null;
+  return { unitaMisura:unit, quantita:n(match[2]), prezzoUnitario:n(match[3]), importo:n(match[4]) };
+}
+function precedingSummaryUnit(entry) {
+  // Lump-sum entries can label the measurement line instead of the summary.
+  // Require a standalone label in this entry, not a mention in prose.
+  return /^a corpo$/i.test(entry.descriptionLines.at(-1) || '') ? 'a corpo' : '';
 }
 function startsEntry(r) {
   const m = clean(r.first).match(/^(\d{1,4})(?:\s+|$)(.*)$/);
@@ -161,7 +168,7 @@ export function parseComputo(pages) {
       }
       if (!current) continue;
 
-      const sommano = parseSommanoCells(r);
+      const sommano = parseSommanoCells(r, precedingSummaryUnit(current));
       if (sommano) {
         Object.assign(current, sommano);
         current.paginaFine = page.page;
@@ -261,7 +268,7 @@ function parseComputoFromLines(pages) {
       if (!current) continue;
 
       if (/^SOMMANO/i.test(line)) {
-        const sommano = parseSommanoText(line);
+        const sommano = parseSommanoText(line, precedingSummaryUnit(current));
         if (sommano) {
           Object.assign(current, sommano);
           current.paginaFine = page.page;

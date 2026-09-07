@@ -2,6 +2,76 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseComputo } from '../src/parser.js';
 
+function lumpSumEntry(label = 'a corpo', summary = ['1,00', "374’180,42", "374’180,42"]) {
+  const item = (text, x, width) => ({ text, x, width, height: 10 });
+  return {
+    page: 15, width: 793, height: 1122,
+    rows: [
+      { y: 950, items: [item('98', 17, 12), item('Opere di sostegno e ponticelli', 79, 150)] },
+      { y: 936, items: [item('PA.05', 17, 28)] },
+      { y: 922, items: [item(label, 79, 160), item('1,00', 607, 20)] },
+      { y: 896, items: [item('SOMMANO', 320, 56), ...summary.map((text, i) => item(text, [607, 634, 711][i], i === 0 ? 20 : 48))] },
+      { y: 845, items: [item('Parziale LAVORI A MISURA euro', 215, 161), item("6’996’439,06", 701, 58)] },
+      { y: 805, items: [item('T O T A L E euro', 290, 86), item("6’996’439,06", 701, 58)] },
+    ],
+  };
+}
+
+test('uses the preceding a corpo label for a unitless positioned summary', () => {
+  const result = parseComputo([lumpSumEntry()]);
+  const entry = result.voci[0];
+  assert.equal(result.voci.length, 1);
+  assert.equal(entry.numero, 98);
+  assert.equal(entry.tariffa, 'PA.05');
+  assert.equal(entry.unitaMisura, 'a corpo');
+  assert.equal(entry.quantita, 1);
+  assert.equal(entry.prezzoUnitario, 374180.42);
+  assert.equal(entry.importo, 374180.42);
+  assert.equal(entry.scostamento, 0);
+  assert.equal(entry.controllo, 'OK');
+  assert.equal(result.totaleEstratto, 374180.42);
+  assert.deepEqual(result.warnings, []);
+});
+
+test('uses a standalone a corpo label in text-only entries without leaking to the next entry', () => {
+  const result = parseComputo([{
+    page: 15,
+    lines: [
+      '98 Opere di sostegno e ponticelli', 'a corpo', "SOMMANO 1,00 374’180,42 374’180,42",
+      '99 Altre opere', 'SOMMANO 1,00 10,00 10,00',
+    ],
+  }]);
+  assert.equal(result.voci[0].unitaMisura, 'a corpo');
+  assert.equal(result.voci[0].importo, 374180.42);
+  assert.equal(result.voci[0].controllo, 'OK');
+  assert.equal(result.voci[1].controllo, 'INCOMPLETO');
+});
+
+for (const label of ['Lavori contabilizzati a corpo', 'Altre opere']) {
+  test(`does not infer an omitted unit from prose: ${label}`, () => {
+    assert.equal(parseComputo([lumpSumEntry(label)]).voci[0].controllo, 'INCOMPLETO');
+  });
+}
+
+test('requires all three amounts even with a preceding a corpo label', () => {
+  const result = parseComputo([lumpSumEntry('a corpo', ["374’180,42", "374’180,42"])]);
+  assert.equal(result.voci[0].controllo, 'INCOMPLETO');
+});
+
+test('retains amount verification for a unitless lump-sum summary', () => {
+  const result = parseComputo([lumpSumEntry('a corpo', ['1,00', "374’180,42", "374’181,42"])]);
+  assert.equal(result.voci[0].controllo, 'VERIFICARE');
+  assert.equal(result.voci[0].scostamento, 1);
+});
+
+test('prefers an explicit summary unit over the preceding label', () => {
+  const result = parseComputo([{
+    page: 15, lines: ['98 Opere', 'a corpo', 'SOMMANO mq 2,00 5,00 10,00'],
+  }]);
+  assert.equal(result.voci[0].unitaMisura, 'mq');
+  assert.equal(result.voci[0].controllo, 'OK');
+});
+
 function transportEntry(unit, amounts = ["1’184,00", '5,63', "6’665,92"]) {
   const item = (text, x, width = 24) => ({ text, x, width, height: 10 });
   return {
