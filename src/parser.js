@@ -1,7 +1,7 @@
 import { segmentRow, repairIdentifierDescription, cleanText, vectorBoundariesNear } from './table-engine.js';
 const DATE_RE = /\b(\d{2}\/\d{2}\/\d{4})\b/;
 const NUM_RE = /-?\d[\d.'´’]*,\d+|-?\d[\d.'´’]*/g;
-const UM_RE = /^(coppie|cad|cadauno|cad\.|mq|mq\/cm|m2|m²|mc|m3|m³|kg|t|q|h|ora|gg|ml|m|cm|mm|ha|a corpo|corpo|%|l|lt|kW|W|V|A|nr|n\.|pz)$/i;
+const UM_RE = /^(coppie|cad|cad\/(?:[1-9]\d*)?gg|cadauno|cad\.|mq|mq\/cm|m2|m²|mc|m3|m³|kg|t|q|h|ora|gg|ml|m|cm|mm|ha|a corpo|corpo|%|l|lt|kW|W|V|A|nr|n\.|pz)$/i;
 
 function n(s) {
   if (s == null || s === '') return null;
@@ -78,6 +78,10 @@ function parseNumCell(s) {
   return m ? n(m[0]) : null;
 }
 function parseSommanoCells(r) {
+  // Some PriMus layouts put the unit inside the designation column and omit
+  // the dedicated unit column. Only flatten the summary, never entry rows.
+  const summary = parseSommanoText(r.all);
+  if (summary && UM_RE.test(summary.unitaMisura)) return summary;
   if (!/^SOMMANO/i.test(r.desc)) return null;
   let um = clean(r.unit);
   // "a corpo" may visually span description/unit depending on font metrics.
@@ -87,6 +91,13 @@ function parseSommanoCells(r) {
   const tot = parseNumCell(r.total);
   if (!UM_RE.test(um) || q == null || pu == null || tot == null) return null;
   return { unitaMisura: um, quantita:q, prezzoUnitario:pu, importo:tot };
+}
+function parseSommanoText(text) {
+  const match = clean(text).match(
+    /^SOMMANO[.\s]+(.+?)\s+(-?\d[\d.'´’]*,\d+|-?\d[\d.'´’]*)\s+(-?\d[\d.'´’]*,\d+|-?\d[\d.'´’]*)\s+(-?\d[\d.'´’]*,\d+|-?\d[\d.'´’]*)$/i,
+  );
+  if (!match) return null;
+  return { unitaMisura:clean(match[1]), quantita:n(match[2]), prezzoUnitario:n(match[3]), importo:n(match[4]) };
 }
 function startsEntry(r) {
   const m = clean(r.first).match(/^(\d{1,4})(?:\s+|$)(.*)$/);
@@ -250,14 +261,9 @@ function parseComputoFromLines(pages) {
       if (!current) continue;
 
       if (/^SOMMANO/i.test(line)) {
-        const sommanoMatch = line.match(
-          /^SOMMANO.*?\s+(.+?)\s+(-?\d[\d.'´’]*,\d+|-?\d[\d.'´’]*)\s+(-?\d[\d.'´’]*,\d+|-?\d[\d.'´’]*)\s+(-?\d[\d.'´’]*,\d+|-?\d[\d.'´’]*)$/i,
-        );
-        if (sommanoMatch) {
-          current.unitaMisura = clean(sommanoMatch[1]);
-          current.quantita = n(sommanoMatch[2]);
-          current.prezzoUnitario = n(sommanoMatch[3]);
-          current.importo = n(sommanoMatch[4]);
+        const sommano = parseSommanoText(line);
+        if (sommano) {
+          Object.assign(current, sommano);
           current.paginaFine = page.page;
         }
         continue;

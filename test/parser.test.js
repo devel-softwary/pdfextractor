@@ -2,6 +2,70 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseComputo } from '../src/parser.js';
 
+function safetyEntry(summaryItems) {
+  const item = (text, x, width = 20) => ({ text, x, width, height: 10 });
+  return {
+    page: 2, width: 793, height: 1122,
+    rows: [
+      { y: 970, items: [item('Oneri di Sicurezza (SpCat 8)', 170, 140)] },
+      { y: 952, items: [item('1', 25), item('Presegnale di cantiere mobile', 87, 150)] },
+      { y: 939, items: [item('CAM24_P01', 25, 56)] },
+      { y: 926, items: [item('.060.040.A', 25, 50)] },
+      { y: 850, items: summaryItems.map(([text, x, width]) => item(text, x, width)) },
+    ],
+  };
+}
+
+for (const [layout, summary] of [
+  ['unit column', [['SOMMANO', 280, 48], ['cad/30gg', 360, 42], ['30,00', 610, 25], ['47,33', 660, 25], ["1’419,90", 728, 40]]],
+  ['designation column', [['SOMMANO cad/30gg', 200, 100], ['30,00', 610, 25], ['47,33', 660, 25], ["1’419,90", 728, 40]]],
+  ['screenshot positions', [['SOMMANO cad/30gg', 288, 96], ['30,00', 610, 25], ['47,33', 660, 25], ["1’419,90", 728, 40]]],
+]) {
+  test(`accepts cad/30gg with the unit in the ${layout}`, () => {
+    const result = parseComputo([safetyEntry(summary)]);
+    assert.equal(result.voci.length, 1);
+    const entry = result.voci[0];
+    assert.equal(entry.unitaMisura, 'cad/30gg');
+    assert.equal(entry.quantita, 30);
+    assert.equal(entry.prezzoUnitario, 47.33);
+    assert.equal(entry.importo, 1419.9);
+    assert.equal(entry.scostamento, 0);
+    assert.equal(entry.controllo, 'OK');
+    assert.equal(entry.tariffa, 'CAM24_P01 .060.040.A');
+    assert.equal(entry.descrizione, 'Presegnale di cantiere mobile');
+    assert.equal(entry.supercategoria, 'Oneri di Sicurezza');
+    assert.equal(result.totaleEstratto, 1419.9);
+    assert.deepEqual(result.warnings, []);
+  });
+}
+
+test('accepts cad/30gg in text-only summaries without treating 30gg as quantity', () => {
+  const result = parseComputo([{
+    page: 2,
+    lines: ['1 Presegnale di cantiere mobile', "SOMMANO cad/30gg 30,00 47,33 1’419,90"],
+  }]);
+  assert.equal(result.voci[0].unitaMisura, 'cad/30gg');
+  assert.equal(result.voci[0].quantita, 30);
+  assert.equal(result.voci[0].controllo, 'OK');
+});
+
+test('keeps cad/30gg entries incomplete when the quantity is missing', () => {
+  const result = parseComputo([safetyEntry([
+    ['SOMMANO cad/30gg', 288, 96], ['47,33', 660, 25], ["1’419,90", 728, 40],
+  ])]);
+  assert.equal(result.voci[0].quantita, null);
+  assert.equal(result.voci[0].controllo, 'INCOMPLETO');
+  assert.equal(result.warnings.length, 1);
+});
+
+test('still flags inconsistent amounts in cad/30gg summaries', () => {
+  const result = parseComputo([safetyEntry([
+    ['SOMMANO cad/30gg', 288, 96], ['30,00', 610, 25], ['47,33', 660, 25], ['1.420,00', 728, 40],
+  ])]);
+  assert.equal(result.voci[0].controllo, 'VERIFICARE');
+  assert.equal(result.voci[0].scostamento, 0.1);
+});
+
 test('parses a PriMus-style entry and verifies its amount', () => {
   const result = parseComputo([{
     page: 1,
