@@ -23,6 +23,7 @@ test('uses the preceding a corpo label for a unitless positioned summary', () =>
   assert.equal(result.voci.length, 1);
   assert.equal(entry.numero, 98);
   assert.equal(entry.tariffa, 'PA.05');
+  assert.equal(entry.descrizione, 'Opere di sostegno e ponticelli a corpo');
   assert.equal(entry.unitaMisura, 'a corpo');
   assert.equal(entry.quantita, 1);
   assert.equal(entry.prezzoUnitario, 374180.42);
@@ -32,6 +33,75 @@ test('uses the preceding a corpo label for a unitless positioned summary', () =>
   assert.equal(result.totaleEstratto, 374180.42);
   assert.deepEqual(result.warnings, []);
 });
+
+for (const positioned of [true, false]) {
+  const page = (number, lines) => ({
+    page: number, width: 793, height: 1122,
+    ...(positioned ? { rows: lines.map((text, index) => {
+      const numbered = text.match(/^(\d+) (.*)$/);
+      return { y: 1000 - index * 20, items: numbered
+        ? [{ text: numbered[1], x: 17, width: 20, height: 10 }, { text: numbered[2], x: 80, width: 220, height: 10 }]
+        : [{ text, x: 80, width: 320, height: 10 }] };
+    }) } : { lines }),
+  });
+
+  test(`separates category headings, totals and multipage recaps (${positioned ? 'positioned' : 'text'})`, () => {
+    const result = parseComputo([
+      page(20, [
+        'Opere di Sostegno e Ponticelli (SpCat 5)',
+        '98 Opere di sostegno e ponticelli', 'a corpo',
+        "SOMMANO 1,00 374’180,42 374’180,42",
+        '------------------', "Parziale LAVORI A MISURA euro 6’996’439,06",
+        "T O T A L E euro 6’996’439,06",
+      ]),
+      page(21, ['Riepilogo SUPER CATEGORIE', "001 Rinaturalizzazione 455’273,35 6,507"]),
+      page(22, ["005 Opere di sostegno e ponticelli 374’180,42 5,348", "Totale SUPER CATEGORIE euro 6’996’439,06 100,000"]),
+    ]);
+    assert.equal(result.voci.length, 1);
+    assert.equal(result.voci[0].descrizione, 'Opere di sostegno e ponticelli a corpo');
+    assert.equal(result.voci[0].supercategoria, 'Opere di Sostegno e Ponticelli');
+    assert.equal(result.voci[0].paginaFine, 20);
+    assert.equal(result.voci[0].controllo, 'OK');
+    assert.equal(result.totaleEstratto, 374180.42);
+    assert.deepEqual(result.warnings, []);
+  });
+
+  test(`resumes work entries after subtotals and recaps (${positioned ? 'positioned' : 'text'})`, () => {
+    const result = parseComputo([page(1, [
+      'Categoria prima (SpCat 1)', '1 Prima voce', 'SOMMANO mq 1,00 5,00 5,00',
+      'Parziale LAVORI A MISURA euro 5,00',
+      'Categoria seconda (SpCat 2)', '2 Seconda voce', 'SOMMANO mq 2,00 5,00 10,00',
+      'Riepilogo SUPER CATEGORIE', '001 Categoria prima 5,00',
+      'LAVORI A CORPO', 'Categoria terza (SpCat 3)', '3 Terza voce',
+      'a corpo', 'SOMMANO 1,00 20,00 20,00',
+    ])]);
+    assert.deepEqual(result.voci.map(e => e.numero), [1, 2, 3]);
+    assert.deepEqual(result.voci.map(e => e.descrizione), ['Prima voce', 'Seconda voce', 'Terza voce a corpo']);
+    assert.deepEqual(result.voci.map(e => e.supercategoria), ['Categoria prima', 'Categoria seconda', 'Categoria terza']);
+    assert.equal(result.totaleEstratto, 35);
+    assert.deepEqual(result.warnings, []);
+  });
+
+  test(`retains incomplete entries without absorbing section text (${positioned ? 'positioned' : 'text'})`, () => {
+    const result = parseComputo([page(1, [
+      '98 Voce senza riepilogo', 'Parziale LAVORI A MISURA euro 10,00',
+      'Riepilogo SUPER CATEGORIE', '001 Categoria 10,00',
+    ])]);
+    assert.equal(result.voci.length, 1);
+    assert.equal(result.voci[0].descrizione, 'Voce senza riepilogo');
+    assert.equal(result.voci[0].controllo, 'INCOMPLETO');
+  });
+
+  test(`preserves entries continuing across a page break (${positioned ? 'positioned' : 'text'})`, () => {
+    const result = parseComputo([
+      page(1, ['1 Prima parte', 'A R I P O R T A R E 10,00']),
+      page(2, ['R I P O R T O 10,00', 'Seconda parte', 'SOMMANO mq 2,00 5,00 10,00']),
+    ]);
+    assert.equal(result.voci[0].descrizione, 'Prima parte Seconda parte');
+    assert.equal(result.voci[0].paginaFine, 2);
+    assert.equal(result.voci[0].controllo, 'OK');
+  });
+}
 
 test('uses a standalone a corpo label in text-only entries without leaking to the next entry', () => {
   const result = parseComputo([{

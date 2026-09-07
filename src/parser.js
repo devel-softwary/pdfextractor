@@ -14,6 +14,12 @@ function clean(s) { return cleanText(s); }
 function isPageNoise(line) {
   return /^(pag\.\s*\d+|COMMITTENTE:|A R I P O R T A R E|R I P O R T O|Num\.Ord\.|TARIFFA DESIGNAZIONE|misura par\.ug\.|unità D I M E N S I O N I)/i.test(line);
 }
+function sectionKind(line) {
+  if (/^Riepilogo\s+(?:SUPER\s*CATEGORIE|CATEGORIE|SUB\s*CATEGORIE|SOTTO\s*CATEGORIE)\b/i.test(line)) return 'recap';
+  if (/^LAVORI\s+(?:A\s+(?:MISURA|CORPO)|IN\s+ECONOMIA)\s*$/i.test(line)) return 'work';
+  if (/^(?:Parziale\s+LAVORI\s+(?:A\s+(?:MISURA|CORPO)|IN\s+ECONOMIA)\b|T\s*O\s*T\s*A\s*L\s*E\s+euro\b)/i.test(line)) return 'total';
+  return null;
+}
 function detectCategory(line) {
   let m = line.match(/^(.+?)\s*\(SpCat\s+\d+\)$/i);
   if (m) return { type: 'spcat', value: clean(m[1]) };
@@ -121,6 +127,7 @@ export function parseComputo(pages) {
   const warnings = [];
   let context = { spcat:'', cat:'', sbcat:'' };
   let current = null;
+  let inRecap = false;
 
   function finalize(entry) {
     if (!entry) return;
@@ -145,9 +152,18 @@ export function parseComputo(pages) {
       const r = splitRow(page, row, bounds);
       if (!r.all || isPageNoise(r.all) || isHeaderRow(r)) continue;
 
+      const section = sectionKind(r.all);
+      if (section) {
+        finalize(current);
+        current = null;
+        if (section !== 'total') inRecap = section === 'recap';
+        continue;
+      }
+      if (inRecap || /^[-_.\s]{3,}$/.test(r.all)) continue;
+
       // Category headings live in the description column, not in tariff.
       const categoryText = clean(r.desc || r.all);
-      const cat = detectCategory(categoryText);
+      const cat = detectCategory(r.all) || detectCategory(categoryText);
       if (cat) { context[cat.type] = cat.value; continue; }
 
       const ne = startsEntry(r);
@@ -169,9 +185,11 @@ export function parseComputo(pages) {
       if (!current) continue;
 
       const sommano = parseSommanoCells(r, precedingSummaryUnit(current));
-      if (sommano) {
-        Object.assign(current, sommano);
+      if (sommano || /^SOMMANO\b/i.test(r.all)) {
+        if (sommano) Object.assign(current, sommano);
         current.paginaFine = page.page;
+        finalize(current);
+        current = null;
         continue;
       }
 
@@ -212,6 +230,7 @@ function parseComputoFromLines(pages) {
   const warnings = [];
   let context = { spcat: '', cat: '', sbcat: '' };
   let current = null;
+  let inRecap = false;
 
   function finalize() {
     if (!current) return;
@@ -235,6 +254,14 @@ function parseComputoFromLines(pages) {
     for (const rawLine of page.lines || []) {
       const line = clean(rawLine);
       if (!line || isPageNoise(line)) continue;
+
+      const section = sectionKind(line);
+      if (section) {
+        finalize();
+        if (section !== 'total') inRecap = section === 'recap';
+        continue;
+      }
+      if (inRecap || /^[-_.\s]{3,}$/.test(line)) continue;
 
       const cat = detectCategory(line);
       if (cat) {
@@ -271,8 +298,9 @@ function parseComputoFromLines(pages) {
         const sommano = parseSommanoText(line, precedingSummaryUnit(current));
         if (sommano) {
           Object.assign(current, sommano);
-          current.paginaFine = page.page;
         }
+        current.paginaFine = page.page;
+        finalize();
         continue;
       }
 
