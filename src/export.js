@@ -45,6 +45,7 @@ export async function toXlsx(data) {
     styleHeader(ws.getRow(1));
     ws.eachRow((row, rn) => { if (rn>1) row.alignment = {vertical:'top', wrapText:true}; });
     for (const key of ['quantita','prezzoUnitario','importo','scostamento']) {
+      if (!defs.some(([columnKey]) => columnKey === key)) continue;
       const col = ws.getColumn(key); if (col?.number) col.numFmt = '#,##0.00';
     }
     if (defs.length) ws.autoFilter = { from:'A1', to: ws.getRow(1).getCell(defs.length).address };

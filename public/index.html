@@ -1,11 +1,89 @@
 <!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PDF Table Extractor</title><style>
 :root{font-family:Inter,system-ui,sans-serif;color:#172033;background:#f5f7fb}body{margin:0}main{max-width:1450px;margin:auto;padding:30px 20px}.card{background:#fff;border:1px solid #dfe5ee;border-radius:14px;padding:20px;box-shadow:0 5px 20px #18243a0b}h1{margin:0 0 6px}p{color:#566176}.upload{display:flex;gap:10px;flex-wrap:wrap;align-items:center}button,select{border-radius:9px;padding:10px 14px;font-weight:700}button{border:0;background:#1f4e78;color:#fff;cursor:pointer}button.secondary{background:#eef3f8;color:#1f4e78}button:disabled{opacity:.5}.stats{display:grid;grid-template-columns:repeat(5,minmax(140px,1fr));gap:12px;margin:16px 0}.stat{padding:14px;border-radius:10px;background:#f6f9fc;border:1px solid #e6ebf2}.stat label{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px}.stats[hidden]{display:none}.stat b{display:block;font-size:21px;margin-top:4px}.table-wrap{overflow:auto;max-height:68vh;border:1px solid #e2e8f0;border-radius:10px}table{border-collapse:collapse;width:max-content;min-width:100%;font-size:13px}th,td{border-bottom:1px solid #e8edf3;padding:8px 10px;vertical-align:top;max-width:600px}th{position:sticky;top:0;background:#1f4e78;color:#fff;text-align:left}#status{margin:12px 0;font-weight:600}.tabs{display:flex;gap:8px;margin:12px 0;flex-wrap:wrap}.tab{background:#e8eef5;color:#1f4e78}.tab.active{background:#1f4e78;color:#fff}@media(max-width:800px){.stats{grid-template-columns:1fr 1fr}}
+.api{margin-top:20px}.api h2{margin-top:0}.api h3{margin-top:24px}.api a{color:#1f4e78}.api pre{background:#f6f9fc;border:1px solid #e6ebf2;border-radius:10px;padding:14px;overflow:auto;font-size:13px;line-height:1.6}.api code{font-family:ui-monospace,monospace}.api li{margin:8px 0}.api .table-wrap{max-height:none}.api th{position:static}.api table{width:100%}
 </style></head><body><main><div class="card">
 <h1>PDF Table Extractor</h1><p>Estrae dati da PDF nativi con tabelle. Riconosce automaticamente <b>computi metrici</b>, <b>elenchi prezzi PriMus</b> e dispone di una modalità <b>tabella generica</b> basata sulle coordinate del PDF.</p>
 <div class="upload"><input id="file" type="file" accept="application/pdf,.pdf"><select id="mode"><option value="auto">Riconoscimento automatico</option><option value="computo">Computo metrico</option><option value="elenco_prezzi">Elenco prezzi</option><option value="generic_table">Tabella generica</option></select><button id="extract">Estrai</button><button id="xlsx" class="secondary" disabled>Excel</button><button id="csv" class="secondary" disabled>CSV</button><button id="json" class="secondary" disabled>JSON</button></div>
 <div id="status"></div><div class="stats" id="stats" hidden><div class="stat">Tipo<b id="sType">-</b></div><div class="stat">Pagine<b id="sPages">-</b></div><div class="stat">Record<b id="sRows">-</b></div><div class="stat">Totale<b id="sTotal">-</b></div><div class="stat">Incompleti<b id="sIncomplete">-</b><label><input id="onlyIncomplete" type="checkbox" aria-controls="table" disabled>Solo INCOMPLETO</label></div></div><div class="tabs" id="tabs"></div><div class="table-wrap" id="wrap" hidden><table id="table"></table></div>
-</div></main><script>
+</div>
+<section class="card api" id="api" aria-labelledby="api-title">
+<h2 id="api-title">API</h2>
+<p>Usa il tool dai tuoi script: carica un PDF, ricevi il risultato JSON e convertilo in CSV o Excel. L'estrazione è sincrona: la risposta arriva al termine dell'elaborazione. Il servizio non richiede una chiave API; eventuali controlli di accesso dipendono dal deployment.</p>
+<p>Negli esempi imposta <code>API_BASE_URL</code> con l'indirizzo del servizio. In locale, la porta predefinita è <code>3000</code>.</p>
+<pre><code>API_BASE_URL='http://localhost:3000'</code></pre>
+<h3>1. Estrai un PDF</h3>
+<p><code>POST /api/extract</code> — invia un corpo <code>multipart/form-data</code> con:</p>
+<ul>
+<li><code>pdf</code> (obbligatorio): un file PDF con testo nativo. I PDF scansionati senza testo non sono supportati.</li>
+<li><code>mode</code> (facoltativo): <code>auto</code>, <code>computo</code>, <code>elenco_prezzi</code> o <code>generic_table</code>. Se omesso o non riconosciuto, viene usato <code>auto</code>.</li>
+</ul>
+<pre><code>curl --fail-with-body "$API_BASE_URL/api/extract" \
+  -F 'pdf=@documento.pdf;type=application/pdf' \
+  -F 'mode=auto' \
+  -o risultato.json</code></pre>
+<p>La risposta <code>200 application/json</code> contiene <code>filename</code>, <code>pages</code>, <code>modeRequested</code>, <code>type</code>, <code>label</code>, <code>records</code> e <code>warnings</code>. Per computi ed elenchi prezzi, <code>columns</code> associa le chiavi alle intestazioni. Le tabelle generiche includono <code>tables</code> con <code>page</code> e <code>rows</code>, e record con <code>tabella</code>, <code>pagina</code>, <code>riga</code> e <code>cells</code>.</p>
+<p>Esempio ridotto di risposta per un computo (i campi disponibili dipendono dal tipo di documento):</p>
+<pre><code id="api-response-example">{
+  "filename": "documento.pdf",
+  "pages": 1,
+  "modeRequested": "auto",
+  "type": "computo",
+  "label": "Computo metrico",
+  "columns": [["descrizione", "Descrizione"], ["controllo", "Check"]],
+  "records": [{"descrizione": "Voce senza importo", "controllo": "INCOMPLETO"}],
+  "totaleEstratto": 0,
+  "warnings": ["1 voci incomplete: verificare il documento."]
+}</code></pre>
+<p>Nei computi, <code>controllo</code> può essere <code>OK</code>, <code>VERIFICARE</code> o <code>INCOMPLETO</code>. Gli avvisi in <code>warnings</code> segnalano risultati da controllare anche quando la richiesta riesce.</p>
+<h3>2. Esporta il risultato</h3>
+<p>Invia l'intera risposta dell'estrazione come <code>application/json</code>. Gli endpoint restituiscono direttamente il file: CSV UTF-8 con BOM e separatore <code>;</code>, oppure Excel <code>.xlsx</code>.</p>
+<pre><code>curl --fail-with-body "$API_BASE_URL/api/export/csv" \
+  -H 'Content-Type: application/json' \
+  --data-binary @risultato.json \
+  -o estrazione.csv
+
+curl --fail-with-body "$API_BASE_URL/api/export/xlsx" \
+  -H 'Content-Type: application/json' \
+  --data-binary @risultato.json \
+  -o estrazione.xlsx</code></pre>
+<h3>Esempio JavaScript (browser)</h3>
+<p>Questo esempio usa il file selezionato nella pagina e l'API sullo stesso dominio. <code>FormData</code> imposta automaticamente il Content-Type con il boundary necessario.</p>
+<pre><code id="api-js-example">async function estraiPdf(file) {
+  if (!file) throw new Error('Seleziona un PDF.');
+  const form = new FormData();
+  form.append('pdf', file);
+  form.append('mode', 'auto');
+  const response = await fetch('/api/extract', {
+    method: 'POST',
+    body: form
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Estrazione fallita');
+  return result;
+}
+
+try {
+  const result = await estraiPdf(document.getElementById('file').files[0]);
+  const incompleti = (result.records || []).filter(r =&gt; r.controllo === 'INCOMPLETO');
+  console.log(result, incompleti);
+} catch (error) {
+  console.error(error.message);
+}</code></pre>
+<h3>Limiti ed errori</h3>
+<p>Il limite predefinito del PDF è <strong>50 MB</strong> (configurabile con <code>MAX_UPLOAD_MB</code>); il limite del corpo JSON per gli export è <strong>30 MB</strong> (configurabile con <code>JSON_BODY_LIMIT_MB</code>). Gli errori applicativi restituiscono JSON con <code>error</code> e <code>code</code>, ad esempio <code>{"error":"Carica un PDF.","code":"invalid_input"}</code>.</p>
+<div class="table-wrap"><table aria-label="Errori API"><thead><tr><th scope="col">HTTP</th><th scope="col">Code</th><th scope="col">Significato</th></tr></thead><tbody>
+<tr><td>400</td><td><code>invalid_input</code></td><td>File assente o contenuto non valido come PDF.</td></tr>
+<tr><td>413</td><td><code>file_too_large</code></td><td>PDF oltre il limite di upload configurato.</td></tr>
+<tr><td>422</td><td><code>no_native_text</code></td><td>PDF senza testo nativo estraibile.</td></tr>
+<tr><td>500</td><td><code>internal_error</code></td><td>Errore di elaborazione. Anche JSON malformato o oltre il limite viene attualmente gestito con questo stato.</td></tr>
+</tbody></table></div>
+<h3>Stato del servizio</h3>
+<p><code>GET /healthz</code> restituisce stato, servizio, ambiente, versione e data. <code>GET /readyz</code> restituisce stato, limite upload attivo (<code>maxUploadMb</code>), versione e data.</p>
+<pre><code>curl --fail-with-body "$API_BASE_URL/healthz"
+curl --fail-with-body "$API_BASE_URL/readyz"</code></pre>
+</section>
+</main><script>
 let data=null, currentTable=0; const $=id=>document.getElementById(id); const esc=s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); const euro=n=>n==null?'—':new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR'}).format(n);
 $('extract').onclick=async()=>{const f=$('file').files[0];if(!f)return $('status').textContent='Seleziona un PDF.';$('status').textContent='Estrazione in corso…';$('extract').disabled=true;try{const fd=new FormData();fd.append('pdf',f);fd.append('mode',$('mode').value);const r=await fetch('/api/extract',{method:'POST',body:fd});data=await r.json();if(!r.ok)throw new Error(data.error||'Errore');render();$('status').textContent=`${data.filename} — ${data.label}${data.warnings?.length?' — '+data.warnings.join(' '):''}`;['xlsx','csv','json'].forEach(id=>$(id).disabled=false)}catch(e){$('status').textContent=e.message}finally{$('extract').disabled=false}};
 const isIncomplete=record=>record.controllo==='INCOMPLETO';
