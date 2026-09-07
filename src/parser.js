@@ -83,6 +83,9 @@ function parseNumCell(s) {
   const m = clean(s).match(/-?\d[\d.'´’]*,\d+|-?\d[\d.'´’]*/);
   return m ? n(m[0]) : null;
 }
+function isIntermediateSommano(text) {
+  return /^SOMMANO\s+(?:positivi|negativi)\b/i.test(text);
+}
 function parseSommanoCells(r, fallbackUnit = '') {
   // Some PriMus layouts put the unit inside the designation column and omit
   // the dedicated unit column. Only flatten the summary, never entry rows.
@@ -184,6 +187,11 @@ export function parseComputo(pages) {
       }
       if (!current) continue;
 
+      // Signed subtotals do not close the entry or supply its final amounts.
+      if (isIntermediateSommano(r.all)) {
+        current.paginaFine = page.page;
+        continue;
+      }
       const sommano = parseSommanoCells(r, precedingSummaryUnit(current));
       if (sommano || /^SOMMANO\b/i.test(r.all)) {
         if (sommano) Object.assign(current, sommano);
@@ -294,6 +302,10 @@ function parseComputoFromLines(pages) {
 
       if (!current) continue;
 
+      if (isIntermediateSommano(line)) {
+        current.paginaFine = page.page;
+        continue;
+      }
       if (/^SOMMANO/i.test(line)) {
         const sommano = parseSommanoText(line, precedingSummaryUnit(current));
         if (sommano) {

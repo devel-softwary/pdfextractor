@@ -45,6 +45,55 @@ for (const positioned of [true, false]) {
     }) } : { lines }),
   });
 
+  test(`uses the final SOMMANO after positive and negative subtotals (${positioned ? 'positioned' : 'text'})`, () => {
+    const result = parseComputo([
+      page(11, ['54 Riqualificazione scarpata lato campagna']),
+      page(12, [
+        'Tratto strada dal canale all’idrovora',
+        "Sommano positivi mq 31’930,00", "Sommano negativi mq -16’280,00",
+        "SOMMANO mq 15’650,00 1,67 26’135,50",
+        '55 Voce successiva', 'SOMMANO mq 1,00 5,00 5,00',
+      ]),
+    ]);
+    assert.equal(result.voci.length, 2);
+    const entry = result.voci[0];
+    assert.equal(entry.unitaMisura, 'mq');
+    assert.equal(entry.quantita, 15650);
+    assert.equal(entry.prezzoUnitario, 1.67);
+    assert.equal(entry.importo, 26135.5);
+    assert.equal(entry.controllo, 'OK');
+    assert.equal(entry.descrizione, 'Riqualificazione scarpata lato campagna Tratto strada dal canale all’idrovora');
+    assert.equal(entry.paginaInizio, 11);
+    assert.equal(entry.paginaFine, 12);
+    assert.equal(result.voci[1].controllo, 'OK');
+    assert.equal(result.totaleEstratto, 26140.5);
+    assert.deepEqual(result.warnings, []);
+  });
+
+  test(`keeps the final signed values across a page break (${positioned ? 'positioned' : 'text'})`, () => {
+    const result = parseComputo([
+      page(11, ['54 Detrazione', 'Sommano positivi mq 10,00', 'Sommano negativi mq -20,00']),
+      page(12, ['SOMMANO mq -10,00 1,67 -16,70']),
+    ]);
+    assert.equal(result.voci[0].quantita, -10);
+    assert.equal(result.voci[0].importo, -16.7);
+    assert.equal(result.voci[0].controllo, 'OK');
+    assert.equal(result.voci[0].paginaFine, 12);
+    assert.equal(result.totaleEstratto, -16.7);
+  });
+
+  test(`does not use intermediate amounts if the final SOMMANO is missing (${positioned ? 'positioned' : 'text'})`, () => {
+    const result = parseComputo([page(12, [
+      '54 Voce incompleta', 'Sommano positivi mq 10,00 1,67 16,70',
+      'Sommano negativi mq -5,00 1,67 -8,35',
+    ])]);
+    assert.equal(result.voci.length, 1);
+    assert.equal(result.voci[0].descrizione, 'Voce incompleta');
+    assert.equal(result.voci[0].quantita, null);
+    assert.equal(result.voci[0].importo, null);
+    assert.equal(result.voci[0].controllo, 'INCOMPLETO');
+  });
+
   test(`separates category headings, totals and multipage recaps (${positioned ? 'positioned' : 'text'})`, () => {
     const result = parseComputo([
       page(20, [
