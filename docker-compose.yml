@@ -1,5 +1,6 @@
 services:
-  computo-extractor:
+  pdfextractor:
+    container_name: pdfextractor
     build:
       context: .
     restart: unless-stopped
@@ -9,7 +10,8 @@ services:
       MAX_UPLOAD_MB: 50
       JSON_BODY_LIMIT_MB: 30
       APP_VERSION: ${APP_VERSION:-2.6.0}
-    expose:
+    ports:
+      # Caddy installed on the host proxies requests to this local port.
       - "3000"
     networks:
       - ssl-reverse-proxy
