@@ -16,7 +16,7 @@ export function extractByMode(pages, mode='auto') {
     const p = parseComputo(pages);
     result = {
       type:'computo', label:'Computo metrico', records:p.voci, voci:p.voci,
-      columns:[['numero','#'],['tariffa','Tariffa'],['categoria','Categoria'],['sottocategoria','Sottocategoria'],['descrizione','Descrizione'],['unitaMisura','U.M.'],['quantita','Quantità'],['prezzoUnitario','P.Unit. €'],['importo','Importo €'],['controllo','Check']],
+      columns:[['numero','#'],['tariffa','Tariffa'],['supercategoria','Supercategoria'],['categoria','Categoria'],['sottocategoria','Sottocategoria'],['descrizione','Descrizione'],['unitaMisura','U.M.'],['quantita','Quantità'],['prezzoUnitario','P.Unit. €'],['importo','Importo €'],['controllo','Check']],
       totaleEstratto:p.totaleEstratto, warnings:p.warnings,
     };
   } else if (actual === 'elenco_prezzi') {
