@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { assertPdfBuffer, ExtractionInputError } from '../src/extractor.js';
+import { assertPdfBuffer, ExtractionInputError, extractDocument } from '../src/extractor.js';
 import { extractByMode } from '../src/detect.js';
 
 test('rejects buffers that do not contain a PDF signature', () => {
@@ -28,4 +29,25 @@ test('exposes supercategories in computo tables and exports', () => {
     ['sottocategoria', 'Sottocategoria'],
   ]);
   assert.equal(result.records[0].supercategoria, 'Oneri di Sicurezza');
+});
+
+
+test('extracts computo2 rows and unmarked category headings', async () => {
+  const result = await extractDocument({
+    buffer: await readFile(new URL('../examples/computo2.pdf', import.meta.url)),
+    filename: 'computo2.pdf',
+    mode: 'computo',
+  });
+  assert.equal(result.records.length, 213);
+  assert.deepEqual(result.warnings, []);
+  for (const number of [8, 19, 50, 74]) {
+    assert.equal(result.records.find(record => record.numero === number)?.controllo, 'OK');
+  }
+  assert.deepEqual(
+    result.records.find(record => record.numero === 19) && {
+      supercategoria: result.records.find(record => record.numero === 19).supercategoria,
+      categoria: result.records.find(record => record.numero === 19).categoria,
+    },
+    { supercategoria: 'Manutenzione cancelli e infissi', categoria: 'Demolizioni e rimozioni' },
+  );
 });

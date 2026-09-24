@@ -1,7 +1,7 @@
 import { segmentRow, repairIdentifierDescription, cleanText, vectorBoundariesNear } from './table-engine.js';
 const DATE_RE = /\b(\d{2}\/\d{2}\/\d{4})\b/;
 const NUM_RE = /-?\d[\d.'´’]*,\d+|-?\d[\d.'´’]*/g;
-const UM_RE = /^(coppie|cad|cad\/(?:[1-9]\d*)?gg|cadauno|cad\.|mq|mq\/cm|m2|m²|mc|mc\s*\/\s*(?:[1-9]\d*\s*)?km|m3|m³|kg|t|q|h|ora|gg|ml|m|cm|mm|ha|a corpo|corpo|%|l|lt|kW|W|V|A|nr|n\.|pz)$/i;
+const UM_RE = /^(coppie|cad|cad\/(?:[1-9]\d*)?gg|cadauno|cad\.|mq|mq\/cm|m2|m²|mc|mc\/(?:[1-9]\d*\s*)?km|m\/(?:[1-9]\d*)?gg|m3|m³|kg|t|q|h|ora|gg|ml|m|cm|mm|ha|a corpo|corpo|%|l|lt|kW|W|V|A|nr|n\.|pz)$/i;
 
 function n(s) {
   if (s == null || s === '') return null;
@@ -10,6 +10,7 @@ function n(s) {
   return Number.isFinite(value) ? value : null;
 }
 function clean(s) { return cleanText(s); }
+function isMeasurementUnit(s) { return UM_RE.test(clean(s).replace(/[∕⁄]/g, '/').replace(/\s*\/\s*/g, '/').replace(/(\d)\s+gg\b/i, '$1gg')); }
 
 function isPageNoise(line) {
   return /^(pag\.\s*\d+|COMMITTENTE:|A R I P O R T A R E|R I P O R T O|Num\.Ord\.|TARIFFA DESIGNAZIONE|misura par\.ug\.|unità D I M E N S I O N I)/i.test(line);
@@ -90,7 +91,7 @@ function parseSommanoCells(r, fallbackUnit = '') {
   // Some PriMus layouts put the unit inside the designation column and omit
   // the dedicated unit column. Only flatten the summary, never entry rows.
   const summary = parseSommanoText(r.all, fallbackUnit);
-  if (summary && UM_RE.test(summary.unitaMisura)) return summary;
+  if (summary && isMeasurementUnit(summary.unitaMisura)) return summary;
   if (!/^SOMMANO/i.test(r.desc)) return null;
   let um = clean(r.unit);
   // "a corpo" may visually span description/unit depending on font metrics.
@@ -98,7 +99,7 @@ function parseSommanoCells(r, fallbackUnit = '') {
   const q = parseNumCell(r.qty);
   const pu = parseNumCell(r.unitPrice);
   const tot = parseNumCell(r.total);
-  if (!UM_RE.test(um) || q == null || pu == null || tot == null) return null;
+  if (!isMeasurementUnit(um) || q == null || pu == null || tot == null) return null;
   return { unitaMisura: um, quantita:q, prezzoUnitario:pu, importo:tot };
 }
 function parseSommanoText(text, fallbackUnit = '') {
@@ -115,10 +116,27 @@ function precedingSummaryUnit(entry) {
   // Require a standalone label in this entry, not a mention in prose.
   return /^a corpo$/i.test(entry.descriptionLines.at(-1) || '') ? 'a corpo' : '';
 }
-function startsEntry(r) {
+function startsEntry(r, requireReference = false) {
   const m = clean(r.first).match(/^(\d{1,4})(?:\s+|$)(.*)$/);
-  if (!m) return null;
+  if (!m || (requireReference && m[2] && !/^\/\s*\d+\b/.test(m[2])) || (!m[2] && /^(?:m|mq|mc|cm)\./i.test(clean(r.desc)))) return null;
   return { numero:Number(m[1]), restFirst:clean(m[2]), desc:clean(r.desc) };
+}
+function isPlainCategoryHeading(text) {
+  return text.length <= 140
+    && !/\d/.test(text)
+    && !/^(?:SOMMANO|Parziale|Totale|LAVORI\b|Riepilogo\b)/i.test(text);
+}
+function applyPendingHeadings(context, headings) {
+  if (!headings.length) return;
+  if (headings.length >= 2) {
+    context.spcat = headings.at(-2);
+    context.cat = headings.at(-1);
+    context.sbcat = '';
+  } else if (context.spcat) {
+    context.cat = headings[0];
+    context.sbcat = '';
+  } else context.spcat = headings[0];
+  headings.length = 0;
 }
 
 export function parseComputo(pages) {
@@ -131,6 +149,7 @@ export function parseComputo(pages) {
   let context = { spcat:'', cat:'', sbcat:'' };
   let current = null;
   let inRecap = false;
+  const pendingHeadings = [];
 
   function finalize(entry) {
     if (!entry) return;
@@ -159,6 +178,7 @@ export function parseComputo(pages) {
       if (section) {
         finalize(current);
         current = null;
+        pendingHeadings.length = 0;
         if (section !== 'total') inRecap = section === 'recap';
         continue;
       }
@@ -167,13 +187,14 @@ export function parseComputo(pages) {
       // Category headings live in the description column, not in tariff.
       const categoryText = clean(r.desc || r.all);
       const cat = detectCategory(r.all) || detectCategory(categoryText);
-      if (cat) { context[cat.type] = cat.value; continue; }
+      if (cat) { context[cat.type] = cat.value; pendingHeadings.length = 0; continue; }
 
-      const ne = startsEntry(r);
+      const ne = startsEntry(r, (page.verticalRules || []).length > 0);
       if (ne) {
         const plausible = !current || ne.numero === current.numero + 1 || ne.numero > current.numero;
         if (plausible) {
           finalize(current);
+          applyPendingHeadings(context, pendingHeadings);
           current = {
             numero:ne.numero, tariffa:'', dataTariffa:'', supercategoria:context.spcat,
             categoria:context.cat, sottocategoria:context.sbcat, descrizione:'',
@@ -185,7 +206,11 @@ export function parseComputo(pages) {
           continue;
         }
       }
-      if (!current) continue;
+      if (!current) {
+        const heading = clean(r.desc || r.all);
+        if (isPlainCategoryHeading(heading)) pendingHeadings.push(heading);
+        continue;
+      }
 
       // Signed subtotals do not close the entry or supply its final amounts.
       if (isIntermediateSommano(r.all)) {
@@ -239,6 +264,7 @@ function parseComputoFromLines(pages) {
   let context = { spcat: '', cat: '', sbcat: '' };
   let current = null;
   let inRecap = false;
+  const pendingHeadings = [];
 
   function finalize() {
     if (!current) return;
@@ -266,6 +292,7 @@ function parseComputoFromLines(pages) {
       const section = sectionKind(line);
       if (section) {
         finalize();
+        pendingHeadings.length = 0;
         if (section !== 'total') inRecap = section === 'recap';
         continue;
       }
@@ -274,12 +301,14 @@ function parseComputoFromLines(pages) {
       const cat = detectCategory(line);
       if (cat) {
         context[cat.type] = cat.value;
+        pendingHeadings.length = 0;
         continue;
       }
 
       const entry = line.match(/^(\d{1,4})\s+(.+)$/);
       if (entry) {
         finalize();
+        applyPendingHeadings(context, pendingHeadings);
         current = {
           numero: Number(entry[1]),
           tariffa: '',
@@ -300,7 +329,10 @@ function parseComputoFromLines(pages) {
         continue;
       }
 
-      if (!current) continue;
+      if (!current) {
+        if (isPlainCategoryHeading(line)) pendingHeadings.push(line);
+        continue;
+      }
 
       if (isIntermediateSommano(line)) {
         current.paginaFine = page.page;
