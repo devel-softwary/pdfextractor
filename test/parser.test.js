@@ -56,6 +56,29 @@ test('extracts the subprogressivo without leaking it into the tariffa', () => {
   assert.equal(result.voci[0].controllo, 'OK');
 });
 
+for (const [value, unit] of [['200', 'l'], ['70', 'dB'], ['300', 'mm'], ['250', 'mm']]) {
+  test(`does not treat the numeric specification ${value} ${unit} as a new entry`, () => {
+    const item = (text, x, width = 20) => ({ text, x, width, height: 10 });
+    const result = parseComputo([{
+      page: 1, width: 595.22, height: 842,
+      rows: [
+        { y: 700, items: [item('22', 7), item('Voce principale', 70, 80)] },
+        { y: 680, items: [item(`${value} ${unit}`, 53.57, 22)] },
+        { y: 660, items: [
+          item('SOMMANO', 245, 35), item('cad', 285), item('4,00', 473),
+          item('5,00', 512), item('20,00', 566),
+        ] },
+      ],
+    }]);
+
+    assert.equal(result.voci.length, 1);
+    assert.equal(result.voci[0].numero, 22);
+    assert.match(result.voci[0].descrizione, new RegExp(`${value} ${unit}`, 'i'));
+    assert.equal(result.voci[0].controllo, 'OK');
+    assert.deepEqual(result.warnings, []);
+  });
+}
+
 for (const positioned of [true, false]) {
   const page = (number, lines) => ({
     page: number, width: 793, height: 1122,

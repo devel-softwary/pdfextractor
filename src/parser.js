@@ -116,6 +116,13 @@ function precedingSummaryUnit(entry) {
   // Require a standalone label in this entry, not a mention in prose.
   return /^a corpo$/i.test(entry.descriptionLines.at(-1) || '') ? 'a corpo' : '';
 }
+function isNumericSpecificationLine(r) {
+  // Wrapped descriptions can start close enough to the first-column boundary
+  // to split values such as "200 l" into first="200", desc="l". They are
+  // technical specifications, not new Num.Ord. rows.
+  return /^\d{1,4}$/.test(clean(r.first))
+    && /^(?:mm|cm|dm|m|km|m[2²³]|mq|mc|l|lt|w|kw|v|a|db|bar|°c)$/i.test(clean(r.desc));
+}
 function startsEntry(r, requireReference = false) {
   const m = clean(r.first).match(/^(\d{1,4})(?:\s*\/\s*(\d{1,4}))?(?:\s+|$)(.*)$/);
   if (!m || (requireReference && m[3] && m[2] == null) || (!m[3] && /^(?:m|mq|mc|cm)\./i.test(clean(r.desc)))) return null;
@@ -201,6 +208,12 @@ export function parseComputo(pages) {
       const categoryText = clean(r.desc || r.all);
       const cat = detectCategory(r.all) || detectCategory(categoryText);
       if (cat) { context[cat.type] = cat.value; pendingHeadings.length = 0; continue; }
+
+      if (current && isNumericSpecificationLine(r)) {
+        current.descriptionLines.push(clean(`${r.first} ${r.desc}`));
+        current.paginaFine = page.page;
+        continue;
+      }
 
       const ne = startsEntry(r, (page.verticalRules || []).length > 0);
       if (ne) {
