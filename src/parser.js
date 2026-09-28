@@ -117,9 +117,22 @@ function precedingSummaryUnit(entry) {
   return /^a corpo$/i.test(entry.descriptionLines.at(-1) || '') ? 'a corpo' : '';
 }
 function startsEntry(r, requireReference = false) {
-  const m = clean(r.first).match(/^(\d{1,4})(?:\s+|$)(.*)$/);
-  if (!m || (requireReference && m[2] && !/^\/\s*\d+\b/.test(m[2])) || (!m[2] && /^(?:m|mq|mc|cm)\./i.test(clean(r.desc)))) return null;
-  return { numero:Number(m[1]), restFirst:clean(m[2]), desc:clean(r.desc) };
+  const m = clean(r.first).match(/^(\d{1,4})(?:\s*\/\s*(\d{1,4}))?(?:\s+|$)(.*)$/);
+  if (!m || (requireReference && m[3] && m[2] == null) || (!m[3] && /^(?:m|mq|mc|cm)\./i.test(clean(r.desc)))) return null;
+  return {
+    numero:Number(m[1]),
+    subprogressivo:m[2] == null ? null : Number(m[2]),
+    restFirst:clean(m[3]),
+    desc:clean(r.desc),
+  };
+}
+
+function isPlausibleEntry(next, current) {
+  if (!current || next.numero > current.numero) return true;
+  return next.numero === current.numero
+    && next.subprogressivo != null
+    && current.subprogressivo != null
+    && next.subprogressivo > current.subprogressivo;
 }
 function isPlainCategoryHeading(text) {
   return text.length <= 140
@@ -191,12 +204,13 @@ export function parseComputo(pages) {
 
       const ne = startsEntry(r, (page.verticalRules || []).length > 0);
       if (ne) {
-        const plausible = !current || ne.numero === current.numero + 1 || ne.numero > current.numero;
+        const plausible = isPlausibleEntry(ne, current);
         if (plausible) {
           finalize(current);
           applyPendingHeadings(context, pendingHeadings);
           current = {
-            numero:ne.numero, tariffa:'', dataTariffa:'', supercategoria:context.spcat,
+            numero:ne.numero, subprogressivo:ne.subprogressivo,
+            tariffa:'', dataTariffa:'', supercategoria:context.spcat,
             categoria:context.cat, sottocategoria:context.sbcat, descrizione:'',
             unitaMisura:'', quantita:null, prezzoUnitario:null, importo:null,
             paginaInizio:page.page, paginaFine:page.page, descriptionLines:[], tariffLines:[]
@@ -248,7 +262,7 @@ export function parseComputo(pages) {
 
   const seen = new Set();
   const cleaned = result.filter(e => {
-    const key = `${e.numero}-${e.paginaInizio}`;
+    const key = `${e.numero}-${e.subprogressivo ?? ''}-${e.paginaInizio}`;
     if (seen.has(key)) return false;
     seen.add(key); return true;
   });
@@ -305,12 +319,13 @@ function parseComputoFromLines(pages) {
         continue;
       }
 
-      const entry = line.match(/^(\d{1,4})\s+(.+)$/);
+      const entry = line.match(/^(\d{1,4})(?:\s*\/\s*(\d{1,4}))?\s+(.+)$/);
       if (entry) {
         finalize();
         applyPendingHeadings(context, pendingHeadings);
         current = {
           numero: Number(entry[1]),
+          subprogressivo: entry[2] == null ? null : Number(entry[2]),
           tariffa: '',
           dataTariffa: '',
           supercategoria: context.spcat,
@@ -323,7 +338,7 @@ function parseComputoFromLines(pages) {
           importo: null,
           paginaInizio: page.page,
           paginaFine: page.page,
-          descriptionLines: [entry[2]],
+          descriptionLines: [entry[3]],
           tariffLines: [],
         };
         continue;

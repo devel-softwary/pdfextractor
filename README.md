@@ -10,7 +10,7 @@ Tool web locale per estrarre dati strutturati da **PDF nativi contenenti tabelle
 
 ## Profili inclusi
 
-1. **Computo metrico PriMus / simili**: numero, tariffa, categorie, descrizione, quantità, prezzo unitario, importo e controllo matematico.
+1. **Computo metrico PriMus / simili**: numero, subprogressivo, tariffa, categorie, descrizione, quantità, prezzo unitario, importo e controllo matematico.
 2. **Elenco prezzi PriMus**: numero articolo, tariffa, descrizione, unità di misura, prezzo unitario e prezzo in lettere.
 3. **Tabella generica**: ricostruisce righe e colonne dalle coordinate X/Y del testo, senza richiedere un formato noto.
 4. **Auto**: riconosce il profilo più probabile.

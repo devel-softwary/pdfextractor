@@ -21,8 +21,9 @@ test('exposes supercategories in computo tables and exports', () => {
     ],
   }], 'computo');
 
-  assert.deepEqual(result.columns.slice(0, 5), [
+  assert.deepEqual(result.columns.slice(0, 6), [
     ['numero', '#'],
+    ['subprogressivo', 'Subprogressivo'],
     ['tariffa', 'Tariffa'],
     ['supercategoria', 'Supercategoria'],
     ['categoria', 'Categoria'],

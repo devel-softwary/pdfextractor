@@ -34,6 +34,28 @@ test('uses the preceding a corpo label for a unitless positioned summary', () =>
   assert.deepEqual(result.warnings, []);
 });
 
+test('extracts the subprogressivo without leaking it into the tariffa', () => {
+  const item = (text, x, width = 24) => ({ text, x, width, height: 10 });
+  const result = parseComputo([{
+    page: 3, width: 793, height: 1122,
+    rows: [
+      { y: 950, items: [item('7 / 21', 17, 36), item('Massetto in malta cementizia', 84, 150)] },
+      { y: 936, items: [item('CAM26_E07', 17, 56)] },
+      { y: 922, items: [item('.010.010.A', 17, 50)] },
+      { y: 896, items: [
+        item('SOMMANO mq', 286, 72), item('125,81', 607),
+        item('17,68', 664), item('2.224,32', 727, 42),
+      ] },
+    ],
+  }]);
+
+  assert.equal(result.voci.length, 1);
+  assert.equal(result.voci[0].numero, 7);
+  assert.equal(result.voci[0].subprogressivo, 21);
+  assert.equal(result.voci[0].tariffa, 'CAM26_E07 .010.010.A');
+  assert.equal(result.voci[0].controllo, 'OK');
+});
+
 for (const positioned of [true, false]) {
   const page = (number, lines) => ({
     page: number, width: 793, height: 1122,
@@ -320,6 +342,7 @@ test('parses a PriMus-style entry and verifies its amount', () => {
   assert.equal(result.voci.length, 1);
   assert.deepEqual(result.voci[0], {
     numero: 1,
+    subprogressivo: null,
     tariffa: 'CAM01_01',
     dataTariffa: '01/01/2025',
     supercategoria: '',
@@ -354,6 +377,7 @@ test('accepts cadauno in SOMMANO rows instead of marking the entry incomplete', 
   assert.equal(result.voci.length, 1);
   assert.deepEqual(result.voci[0], {
     numero: 101,
+    subprogressivo: null,
     tariffa: 'N.P.06_Reci nzione.paline',
     dataTariffa: '22/10/2025',
     supercategoria: '',
